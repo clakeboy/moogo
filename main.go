@@ -16,7 +16,7 @@ var server *service.HttpServer
 
 func main() {
 	go utils.ExitApp(out, func(s os.Signal) {
-		os.Remove(command.CmdPidName)
+		_ = os.Remove(command.CmdPidName)
 	})
 	server.Start()
 }
@@ -28,7 +28,7 @@ func init() {
 	common.Conf = common.NewYamlConfig(command.CmdConfFile)
 
 	if !utils.PathExists(path.Dir(common.Conf.BDB.Path)) {
-		os.MkdirAll(path.Dir(common.Conf.BDB.Path), 0775)
+		_ = os.MkdirAll(path.Dir(common.Conf.BDB.Path), 0775)
 	}
 	common.BDB, err = storm.Open(common.Conf.BDB.Path)
 
@@ -36,9 +36,12 @@ func init() {
 		fmt.Println("open database error:", err)
 	}
 
+	common.Conns = common.NewConnects()
+
 	if common.Conf.System.Pid != "" {
 		command.CmdPidName = common.Conf.System.Pid
 	}
+
 	utils.WritePid(command.CmdPidName)
 	out = make(chan os.Signal, 1)
 	server = service.NewHttpServer(common.Conf.System.Ip+":"+common.Conf.System.Port, command.CmdDebug, command.CmdCross, command.CmdPProf)

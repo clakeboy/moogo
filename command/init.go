@@ -38,7 +38,7 @@ func InitApp() {
 	common.Conf = common.NewYamlConfig(CmdConfFile)
 
 	if !utils.PathExists(path.Dir(common.Conf.BDB.Path)) {
-		os.MkdirAll(path.Dir(common.Conf.BDB.Path), 0775)
+		_ = os.MkdirAll(path.Dir(common.Conf.BDB.Path), 0755)
 	}
 	common.BDB, err = storm.Open(common.Conf.BDB.Path)
 
@@ -88,5 +88,5 @@ func generateConfig() {
 		Exit(fmt.Sprintf("generate config file error : %v", err))
 	}
 
-	ioutil.WriteFile(CmdConfFile, out, 0644)
+	_ = ioutil.WriteFile(CmdConfFile, out, 0644)
 }

@@ -46,9 +46,9 @@ func (a *AccountModel) GetById(id int) (*AccountData, error) {
 }
 
 //通过Name 拿到记录
-func (t *AccountModel) GetByAccount(name string) (*AccountData, error) {
+func (a *AccountModel) GetByAccount(name string) (*AccountData, error) {
 	data := &AccountData{}
-	err := t.One("Account", name, data)
+	err := a.One("Account", name, data)
 	if err != nil {
 		return nil, err
 	}

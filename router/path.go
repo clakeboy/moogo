@@ -13,6 +13,10 @@ func GetController(controllerName string, c *gin.Context) interface{} {
 		return controllers.NewLoginController(c)
 	case "server":
 		return controllers.NewServerController(c)
+	case "conn":
+		return controllers.NewConnectController(c)
+	case "exec":
+		return controllers.NewExecController(c)
 	default:
 		return nil
 	}
