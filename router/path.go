@@ -17,6 +17,14 @@ func GetController(controllerName string, c *gin.Context) interface{} {
 		return controllers.NewConnectController(c)
 	case "exec":
 		return controllers.NewExecController(c)
+	case "index":
+		return controllers.NewIndexesController(c)
+	case "coll":
+		return controllers.NewCollectionController(c)
+	case "database":
+		return controllers.NewDatabaseController(c)
+	case "backup":
+		return controllers.NewBackupController(c)
 	default:
 		return nil
 	}

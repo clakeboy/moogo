@@ -19,3 +19,4 @@ db
 logs
 go.sum
 assets
+moogo.pid

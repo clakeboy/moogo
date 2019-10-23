@@ -5,10 +5,12 @@ import (
 	"github.com/clakeboy/golib/ckdb"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
+	"moogo/socket"
 )
 
 var Conf *Config
 var BDB *storm.DB
+var SocketIO *socket.Engine
 
 //总配置结构
 type Config struct {

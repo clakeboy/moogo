@@ -30,7 +30,7 @@ type Database struct {
 func NewDatabase(conf *Config) (*Database, error) {
 	opts := options.Client()
 	opts.SetHosts([]string{fmt.Sprintf("%s:%s", conf.Host, conf.Port)})
-	opts.SetMaxPoolSize(uint16(conf.PoolSize))
+	opts.SetMaxPoolSize(uint64(conf.PoolSize))
 	opts.SetConnectTimeout(20 * time.Second)
 	if conf.Auth != "" {
 		opts.SetAuth(options.Credential{
@@ -70,8 +70,9 @@ func (d *Database) Close() error {
 }
 
 //select database
-func (d *Database) SelectDatabase(dbName string) {
+func (d *Database) SelectDatabase(dbName string) *Database {
 	d.currentDBName = dbName
+	return d
 }
 
 func (d *Database) ListDatabase() (mongo.ListDatabasesResult, error) {
@@ -87,7 +88,14 @@ func (d *Database) Database(dbName ...string) *mongo.Database {
 	if len(dbName) > 0 {
 		return d.client.Database(dbName[0])
 	}
+
 	return d.client.Database(d.currentDBName)
+}
+
+//return high level collection
+func (d *Database) Collection(collName string, dbName ...string) *Collection {
+	coll := d.Database(dbName...).Collection(collName)
+	return NewCollection(collName, coll)
 }
 
 //ping mongodb server

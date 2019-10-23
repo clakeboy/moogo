@@ -155,9 +155,19 @@ func (s *ServerController) ActionTestConnect(args []byte) error {
 	if err != nil {
 		return err
 	}
-	if serverInfo.IsSSH {
+	if sshSess != nil && serverInfo.IsSSH {
 		sshSess.Close()
 	}
 
 	return nil
+}
+
+//得到连接的服务器列表
+func (s *ServerController) ActionGetActive(args []byte) ([]*common.ServerConnectData, error) {
+	var list []*common.ServerConnectData
+	common.Conns.Each(func(conn *common.Conn) {
+		list = append(list, conn.ServerInfo)
+	})
+
+	return list, nil
 }

@@ -11,7 +11,14 @@ import (
 	"moogo/common"
 	"moogo/components/mongo"
 	"moogo/models"
+	"sort"
 )
+
+type MenuList []*common.ServerMenu
+
+func (l MenuList) Len() int           { return len(l) }
+func (l MenuList) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
+func (l MenuList) Less(i, j int) bool { return l[i].Text < l[j].Text }
 
 //控制器
 type ConnectController struct {
@@ -28,7 +35,7 @@ func generateServerMenu(conn *common.Conn) ([]*common.ServerMenu, error) {
 		return nil, err
 	}
 
-	var server []*common.ServerMenu
+	var server MenuList
 
 	mainServer := &common.ServerMenu{
 		Key:  "main",
@@ -38,19 +45,25 @@ func generateServerMenu(conn *common.Conn) ([]*common.ServerMenu, error) {
 		Type: "server",
 	}
 
-	var dbs []*common.ServerMenu
+	var dbs MenuList
 
 	for _, v := range dbList.Databases {
 		collList, _ := generateCollectionMenu(conn, v.Name)
 		dbs = append(dbs, &common.ServerMenu{
-			Key:      fmt.Sprintf("db_%s", v.Name),
-			Text:     v.Name,
-			Icon:     "database",
-			Data:     v,
+			Key:  fmt.Sprintf("db_%s", v.Name),
+			Text: v.Name,
+			Icon: "database",
+			Data: utils.M{
+				"server":        conn.ServerInfo,
+				"database":      v.Name,
+				"database_info": v,
+			},
 			Type:     "database",
 			Children: collList,
 		})
 	}
+
+	sort.Sort(dbs)
 
 	mainServer.Children = dbs
 
@@ -66,7 +79,7 @@ func generateCollectionMenu(conn *common.Conn, dbName string) ([]*common.ServerM
 		return nil, err
 	}
 
-	var collList []*common.ServerMenu
+	var collList MenuList
 
 	defer cur.Close(context.TODO())
 	for cur.Next(context.TODO()) {
@@ -82,14 +95,17 @@ func generateCollectionMenu(conn *common.Conn, dbName string) ([]*common.ServerM
 			Text: collName,
 			Icon: "table",
 			Data: utils.M{
-				"server":     conn.ServerInfo,
-				"database":   dbName,
-				"collection": collName,
+				"server":          conn.ServerInfo,
+				"database":        dbName,
+				"collection":      collName,
+				"collection_info": coll,
 			},
 			Type:     "collection",
 			Children: idxList,
 		})
 	}
+
+	sort.Sort(collList)
 
 	return collList, nil
 }
@@ -103,7 +119,7 @@ func generateCollectionIndexes(conn *common.Conn, dbName, collName string) ([]*c
 		return nil, err
 	}
 
-	var idxList []*common.ServerMenu
+	var idxList MenuList
 
 	defer cur.Close(context.TODO())
 	for cur.Next(context.TODO()) {
@@ -126,6 +142,8 @@ func generateCollectionIndexes(conn *common.Conn, dbName, collName string) ([]*c
 			Type: "index",
 		})
 	}
+
+	sort.Sort(idxList)
 
 	return idxList, nil
 }
@@ -190,6 +208,10 @@ func (c *ConnectController) ActionConnect(args []byte) ([]*common.ServerMenu, er
 	if err != nil {
 		return nil, err
 	}
+
+	//清除明文密码
+	serverInfo.SSHPassword = ""
+	serverInfo.AuthPassword = ""
 
 	conn := &common.Conn{
 		Db:         db,

@@ -7,12 +7,14 @@ import (
 	"moogo/command"
 	"moogo/common"
 	"moogo/service"
+	"moogo/socket"
 	"os"
 	"path"
 )
 
 var out chan os.Signal
 var server *service.HttpServer
+var socketServer *service.SocketServer
 
 func main() {
 	go utils.ExitApp(out, func(s os.Signal) {
@@ -41,6 +43,9 @@ func init() {
 	if common.Conf.System.Pid != "" {
 		command.CmdPidName = common.Conf.System.Pid
 	}
+
+	common.SocketIO = socket.NewEngine()
+	socketServer = service.NewSocketServer(common.SocketIO)
 
 	utils.WritePid(command.CmdPidName)
 	out = make(chan os.Signal, 1)

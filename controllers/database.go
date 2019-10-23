@@ -3,8 +3,9 @@ package controllers
 import (
 	"context"
 	"encoding/json"
-	"github.com/clakeboy/golib/ckdb"
+	"github.com/clakeboy/golib/utils"
 	"github.com/gin-gonic/gin"
+	"gopkg.in/mgo.v2/bson"
 	"moogo/common"
 )
 
@@ -18,7 +19,7 @@ func NewDatabaseController(c *gin.Context) *DatabaseController {
 }
 
 //查询
-func (d *DatabaseController) ActionQuery(args []byte) (*ckdb.QueryResult, error) {
+func (d *DatabaseController) ActionQuery(args []byte) ([]utils.M, error) {
 	var params struct {
 		ServerId int `json:"server_id"`
 	}
@@ -28,11 +29,29 @@ func (d *DatabaseController) ActionQuery(args []byte) (*ckdb.QueryResult, error)
 		return nil, err
 	}
 
-	return nil, nil
+	conn, err := common.Conns.Get(params.ServerId)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := conn.Db.ListDatabase()
+	if err != nil {
+		return nil, err
+	}
+
+	var list []utils.M
+
+	for _, v := range result.Databases {
+		list = append(list, utils.M{
+			"name": v.Name,
+		})
+	}
+
+	return list, nil
 }
 
 //添加
-func (d *DatabaseController) ActionAdd(args []byte) error {
+func (d *DatabaseController) ActionAdd(args []byte) (string, error) {
 	var params struct {
 		ServerId int    `json:"server_id"`
 		Database string `json:"database"`
@@ -40,17 +59,21 @@ func (d *DatabaseController) ActionAdd(args []byte) error {
 
 	err := json.Unmarshal(args, &params)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	conn, err := common.Conns.Get(params.ServerId)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	_ = conn.Db.Database(params.Database)
-
-	return nil
+	coll := conn.Db.Database(params.Database).Collection("tmp")
+	_, err = coll.InsertOne(nil, bson.M{"name": params.Database})
+	if err != nil {
+		return "", nil
+	}
+	_ = coll.Drop(nil)
+	return params.Database, nil
 }
 
 //删除

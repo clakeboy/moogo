@@ -6,10 +6,25 @@ import (
 	"github.com/clakeboy/golib/utils"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/bsontype"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"moogo/common"
-	"time"
+	"sort"
 )
+
+//列表显示字段名
+type MongoColumn struct {
+	Key      string        `json:"key"`
+	Type     bsontype.Type `json:"type"`
+	TypeName string        `json:"type_name"`
+}
+
+type ColumnList []*MongoColumn
+
+func (l ColumnList) Len() int           { return len(l) }
+func (l ColumnList) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
+func (l ColumnList) Less(i, j int) bool { return l[i].Key < l[j].Key }
 
 //控制器
 type ExecController struct {
@@ -84,7 +99,7 @@ func (e *ExecController) ActionQuery(args []byte) (utils.M, error) {
 
 	var list []interface{}
 	keysM := utils.M{}
-	var keys []utils.M
+	var keys ColumnList
 	for cur.Next(ctx) {
 		//data := bson.M{}
 		val := bson.M{}
@@ -97,14 +112,17 @@ func (e *ExecController) ActionQuery(args []byte) (utils.M, error) {
 				continue
 			}
 			keysM[v.Key()] = true
-			keys = append(keys, utils.M{
-				"key":       v.Key(),
-				"type":      v.Value().Type,
-				"type_name": v.Value().Type.String(),
+			keys = append(keys, &MongoColumn{
+				Key:      v.Key(),
+				Type:     v.Value().Type,
+				TypeName: v.Value().Type.String(),
 			})
 		}
+
 		list = append(list, val)
 	}
+
+	sort.Sort(keys)
 
 	return utils.M{
 		"list":  list,
@@ -113,13 +131,57 @@ func (e *ExecController) ActionQuery(args []byte) (utils.M, error) {
 	}, nil
 }
 
+//得到一条记录
+func (e *ExecController) ActionFind(args []byte) (string, error) {
+	var params struct {
+		ServerId   int    `json:"server_id"`
+		Database   string `json:"database"`
+		Collection string `json:"collection"`
+		Id         string `json:"id"`
+	}
+
+	err := json.Unmarshal(args, &params)
+	if err != nil {
+		return "", err
+	}
+
+	id, err := primitive.ObjectIDFromHex(params.Id)
+	if err != nil {
+		return "", err
+	}
+
+	conn, err := common.Conns.Get(params.ServerId)
+	if err != nil {
+		return "", err
+	}
+	ctx := context.TODO()
+	coll := conn.Db.Database(params.Database).Collection(params.Collection)
+
+	res := coll.FindOne(ctx, bson.M{"_id": id})
+	if res.Err() != nil {
+		return "", res.Err()
+	}
+
+	row, err := res.DecodeBytes()
+	if err != nil {
+		return "", err
+	}
+
+	data, err := bson.MarshalExtJSON(row, true, false)
+	if err != nil {
+		return "", err
+	}
+
+	return string(data), nil
+}
+
 //添加数据
 func (e *ExecController) ActionInsert(args []byte) error {
 	var params struct {
-		ServerId   int             `json:"server_id"`
-		Database   string          `json:"database"`
-		Collection string          `json:"collection"`
-		Data       json.RawMessage `json:"data"`
+		ServerId   int    `json:"server_id"`
+		Database   string `json:"database"`
+		Collection string `json:"collection"`
+		Data       string `json:"data"`
 	}
 
 	err := json.Unmarshal(args, &params)
@@ -128,7 +190,38 @@ func (e *ExecController) ActionInsert(args []byte) error {
 	}
 
 	data := bson.M{}
-	err = bson.UnmarshalExtJSON(params.Data, true, &data)
+	err = bson.UnmarshalExtJSON([]byte(params.Data), true, &data)
+	if err != nil {
+		return err
+	}
+
+	data["_id"] = primitive.NewObjectID()
+
+	conn, err := common.Conns.Get(params.ServerId)
+	if err != nil {
+		return err
+	}
+
+	_, err = conn.Db.Database(params.Database).Collection(params.Collection).InsertOne(nil, data)
+
+	return err
+}
+
+//删除
+func (e *ExecController) ActionDelete(args []byte) error {
+	var params struct {
+		ServerId   int    `json:"server_id"`
+		Database   string `json:"database"`
+		Collection string `json:"collection"`
+		Id         string `json:"id"`
+	}
+
+	err := json.Unmarshal(args, &params)
+	if err != nil {
+		return err
+	}
+
+	id, err := primitive.ObjectIDFromHex(params.Id)
 	if err != nil {
 		return err
 	}
@@ -137,44 +230,44 @@ func (e *ExecController) ActionInsert(args []byte) error {
 	if err != nil {
 		return err
 	}
-	ctx, _ := context.WithTimeout(context.Background(), time.Second*30)
 
-	_, err = conn.Db.Database(params.Database).Collection(params.Collection).InsertOne(ctx, data)
-	if err != nil {
-		return err
-	}
+	coll := conn.Db.Database(params.Database).Collection(params.Collection)
+	_, err = coll.DeleteOne(nil, bson.M{"_id": id})
 
-	return nil
-}
-
-//删除
-func (e *ExecController) ActionDelete(args []byte) error {
-	var params struct {
-		ServerId   int             `json:"server_id"`
-		Database   string          `json:"database"`
-		Collection string          `json:"collection"`
-		Data       json.RawMessage `json:"data"`
-	}
-
-	err := json.Unmarshal(args, &params)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 //修改
 func (e *ExecController) ActionUpdate(args []byte) error {
 	var params struct {
-		ServerId   int             `json:"server_id"`
-		Database   string          `json:"database"`
-		Collection string          `json:"collection"`
-		Data       json.RawMessage `json:"data"`
+		ServerId   int    `json:"server_id"`
+		Database   string `json:"database"`
+		Collection string `json:"collection"`
+		Data       string `json:"data"`
+		Id         string `json:"id"`
 	}
 
 	err := json.Unmarshal(args, &params)
 	if err != nil {
 		return err
 	}
-	return nil
+
+	id, err := primitive.ObjectIDFromHex(params.Id)
+	if err != nil {
+		return err
+	}
+
+	conn, err := common.Conns.Get(params.ServerId)
+	if err != nil {
+		return err
+	}
+	data := bson.M{}
+	err = bson.UnmarshalExtJSON([]byte(params.Data), true, &data)
+	if err != nil {
+		return err
+	}
+
+	coll := conn.Db.Database(params.Database).Collection(params.Collection)
+	_, err = coll.ReplaceOne(nil, bson.M{"_id": id}, data)
+	return err
 }

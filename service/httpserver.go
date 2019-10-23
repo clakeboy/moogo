@@ -64,6 +64,11 @@ func (h *HttpServer) Init() {
 	h.server.Use(middles.Cookie())
 	//h.server.Use(gzip.Gzip(gzip.DefaultCompression))
 	//h.server.Use(middles.Session())
+	//websocket io
+	h.server.GET("/socket.cio/*action", func(c *gin.Context) {
+		components.Cross(c, h.isCross, c.Request.Header.Get("Origin"))
+		common.SocketIO.Accept(c)
+	})
 	//跨域调用的OPTIONS
 	h.server.OPTIONS("*action", func(c *gin.Context) {
 		components.Cross(c, h.isCross, c.Request.Header.Get("Origin"))

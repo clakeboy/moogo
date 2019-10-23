@@ -3,9 +3,10 @@ package models
 import (
 	"fmt"
 	"github.com/clakeboy/golib/ckdb"
-	"github.com/clakeboy/golib/utils"
 	"gopkg.in/mgo.v2/bson"
+	"io/ioutil"
 	"moogo/common"
+	"path/filepath"
 	"testing"
 )
 
@@ -47,5 +48,14 @@ func TestNewAccountModel(t *testing.T) {
 }
 
 func TestAccountModel_Query(t *testing.T) {
-	fmt.Println(utils.RandStr(16, nil))
+	tmpDir, err := ioutil.TempDir("", "moogo_export_")
+	fmt.Println(tmpDir, err)
+	str := "clake.bson"
+
+	fmt.Println(filepath.Abs(str))
+	fmt.Println(filepath.Ext(str))
+	fmt.Println(filepath.Base(str))
+	fmt.Println(filepath.Clean(str))
+	fmt.Println(filepath.Dir(str))
+	fmt.Println(filepath.Glob(str))
 }

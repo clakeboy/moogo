@@ -12,6 +12,15 @@ import (
 	"moogo/common"
 )
 
+type IndexData struct {
+	Background bool           `json:"background" bson:"background"`
+	Unique     bool           `json:"unique" bson:"unique"`
+	Key        map[string]int `json:"key" bson:"key"`
+	Name       string         `json:"name" bson:"name"`
+	Ns         string         `json:"ns" bson:"ns"`
+	V          float64        `json:"v" bson:"v"`
+}
+
 //索引管理
 type IndexesController struct {
 	c *gin.Context
@@ -37,7 +46,7 @@ func (i *IndexesController) ActionQuery(args []byte) (*ckdb.QueryResult, error) 
 }
 
 //查找一个索引
-func (i *IndexesController) ActionFind(args []byte) (bson.M, error) {
+func (i *IndexesController) ActionFind(args []byte) (*IndexData, error) {
 	var params struct {
 		ServerId   int    `json:"server_id"`
 		Database   string `json:"database"`
@@ -63,10 +72,13 @@ func (i *IndexesController) ActionFind(args []byte) (bson.M, error) {
 
 	defer cur.Close(ctx)
 	for cur.Next(ctx) {
-		var data bson.M
+		var data IndexData
 		err := cur.Decode(&data)
 		if err != nil {
 			continue
+		}
+		if data.Name == params.IndexName {
+			return &data, nil
 		}
 	}
 
@@ -76,10 +88,10 @@ func (i *IndexesController) ActionFind(args []byte) (bson.M, error) {
 //添加
 func (i *IndexesController) ActionAdd(args []byte) error {
 	var params struct {
-		ServerId   int             `json:"server_id"`
-		Database   string          `json:"database"`
-		Collection string          `json:"collection"`
-		Keys       json.RawMessage `json:"keys"`
+		ServerId   int    `json:"server_id"`
+		Database   string `json:"database"`
+		Collection string `json:"collection"`
+		Keys       bson.M `json:"keys"`
 		Opts       struct {
 			Name               string `json:"name"`                 //索引名称
 			Background         bool   `json:"background"`           //是否后端执行索引
@@ -98,14 +110,6 @@ func (i *IndexesController) ActionAdd(args []byte) error {
 		return err
 	}
 
-	keys := bson.M{}
-
-	err = bson.UnmarshalExtJSON(params.Keys, true, &keys)
-
-	if err != nil {
-		return err
-	}
-
 	idxOpts := options.Index()
 	idxOpts.SetName(params.Opts.Name)
 	idxOpts.SetBackground(params.Opts.Background)
@@ -114,8 +118,14 @@ func (i *IndexesController) ActionAdd(args []byte) error {
 
 	ctx := context.TODO()
 	dbIdx := conn.Db.Database(params.Database).Collection(params.Collection).Indexes()
+
+	_, err = dbIdx.DropOne(ctx, params.Opts.Name)
+	if err != nil {
+		return err
+	}
+
 	res, err := dbIdx.CreateOne(ctx, mongo.IndexModel{
-		Keys:    keys,
+		Keys:    params.Keys,
 		Options: idxOpts,
 	})
 	fmt.Println(res)
@@ -124,6 +134,30 @@ func (i *IndexesController) ActionAdd(args []byte) error {
 
 //删除
 func (i *IndexesController) ActionDelete(args []byte) error {
+	var params struct {
+		ServerId   int    `json:"server_id"`
+		Database   string `json:"database"`
+		Collection string `json:"collection"`
+		Name       string `json:"name"`
+	}
+
+	err := json.Unmarshal(args, &params)
+	if err != nil {
+		return err
+	}
+
+	conn, err := common.Conns.Get(params.ServerId)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.TODO()
+	dbIdx := conn.Db.Database(params.Database).Collection(params.Collection).Indexes()
+	_, err = dbIdx.DropOne(ctx, params.Name)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

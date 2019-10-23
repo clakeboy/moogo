@@ -154,7 +154,7 @@ func TestDatabase_ListDatabase(t *testing.T) {
 	ctx := context.TODO()
 	dba := db.Database("center")
 
-	cur, err := dba.ListCollections(ctx, bson.M{})
+	cur, err := dba.ListCollections(ctx, bson.M{"name": "red_log"})
 	if err != nil {
 		t.Error(err)
 	}
@@ -184,6 +184,7 @@ func TestBsonJson(t *testing.T) {
 	//for i:=len(dochead)-1;i>=0;i-- {
 	//	fmt.Println(dochead[i])
 	//}
+	fmt.Println(dochead, utils.BytesToInt(dochead))
 	length := make([]byte, 4)
 	length[0], length[1], length[2], length[3] = dochead[3], dochead[2], dochead[1], dochead[0]
 	doclen := utils.BytesToInt(length)
@@ -210,4 +211,50 @@ func TestByteHex(t *testing.T) {
 	fmt.Println(string(deStr))
 
 	str = `asdfasdfasdf`
+}
+
+func TestDatabaseInfo(t *testing.T) {
+	db, err := getDatabase()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	dba := db.Database("test")
+	//res := dba.RunCommand(context.TODO(),bsonx.Doc{{"serverStatus", bsonx.Int32(1)}},)
+	//res := dba.RunCommand(context.TODO(),bson.M{"serverStatus":1},)
+	//res := dba.RunCommand(context.TODO(),bson.M{"getLog":"global"},)
+	//res := dba.RunCommand(context.TODO(),bson.M{"listDatabases":1},)
+	res := dba.RunCommand(context.TODO(), bson.M{"create": "ssss"})
+	val := bson.M{}
+	_ = res.Decode(&val)
+	utils.PrintAny(val)
+}
+
+func TestDatabaseLog(t *testing.T) {
+	//db,err := getDatabase()
+	//if err != nil {
+	//	t.Error(err)
+	//	return
+	//}
+	//dba := db.Database("center")
+	//dba.RunCommand(nil,)
+}
+
+func getDatabase() (*Database, error) {
+	cfg := &Config{
+		Host:     "localhost",
+		Port:     "27017",
+		PoolSize: 100,
+	}
+
+	db, err := NewDatabase(cfg)
+	if err != nil {
+		return nil, err
+	}
+	err = db.Open()
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }
