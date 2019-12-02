@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"moogo/components/mongo"
 	"moogo/models"
 	"sort"
+	"strings"
 )
 
 type MenuList []*common.ServerMenu
@@ -74,15 +74,15 @@ func generateServerMenu(conn *common.Conn) ([]*common.ServerMenu, error) {
 
 func generateCollectionMenu(conn *common.Conn, dbName string) ([]*common.ServerMenu, error) {
 	db := conn.Db.Database(dbName)
-	cur, err := db.ListCollections(context.TODO(), bson.D{})
+	cur, err := db.ListCollections(common.GetContent(), bson.D{})
 	if err != nil {
 		return nil, err
 	}
 
 	var collList MenuList
 
-	defer cur.Close(context.TODO())
-	for cur.Next(context.TODO()) {
+	defer cur.Close(common.GetContent())
+	for cur.Next(common.GetContent()) {
 		coll := bson.M{}
 		err := cur.Decode(&coll)
 		if err != nil {
@@ -114,15 +114,15 @@ func generateCollectionIndexes(conn *common.Conn, dbName, collName string) ([]*c
 	db := conn.Db.Database(dbName)
 	coll := db.Collection(collName)
 	list := coll.Indexes()
-	cur, err := list.List(context.TODO())
+	cur, err := list.List(common.GetContent())
 	if err != nil {
 		return nil, err
 	}
 
 	var idxList MenuList
 
-	defer cur.Close(context.TODO())
-	for cur.Next(context.TODO()) {
+	defer cur.Close(common.GetContent())
+	for cur.Next(common.GetContent()) {
 		idx := bson.M{}
 		err := cur.Decode(&idx)
 		if err != nil {
@@ -194,9 +194,14 @@ func (c *ConnectController) ActionConnect(args []byte) ([]*common.ServerMenu, er
 		sshSess = common.NewSession(":33001",
 			fmt.Sprintf("%s:%s", serverInfo.Address, serverInfo.Port),
 			client)
+		localHost, err := sshSess.CheckPort()
+		if err != nil {
+			return nil, err
+		}
 		go sshSess.Run()
-		cfg.Host = "127.0.0.1"
-		cfg.Port = "33001"
+		localAddrs := strings.Split(localHost, ":")
+		cfg.Host = localAddrs[0]
+		cfg.Port = localAddrs[1]
 	}
 
 	db, err := mongo.NewDatabase(cfg)

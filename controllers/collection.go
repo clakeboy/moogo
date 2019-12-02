@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"github.com/clakeboy/golib/utils"
@@ -37,7 +36,7 @@ func (c *CollectionController) ActionList(args []byte) ([]utils.M, error) {
 		return nil, err
 	}
 
-	list, err := conn.Db.Database(params.Database).ListCollectionNames(nil, bson.D{})
+	list, err := conn.Db.Database(params.Database).ListCollectionNames(common.GetContent(), bson.D{})
 	sort.Strings(list)
 	var res []utils.M
 	for _, v := range list {
@@ -67,7 +66,7 @@ func (c *CollectionController) ActionDelete(args []byte) error {
 	}
 
 	coll := conn.Db.Database(params.Database).Collection(params.Collection)
-	err = coll.Drop(context.TODO())
+	err = coll.Drop(common.GetContent())
 	return err
 }
 
@@ -89,7 +88,7 @@ func (c *CollectionController) ActionCreate(args []byte) error {
 	}
 
 	db := conn.Db.Database(params.Database)
-	cur := db.RunCommand(nil, bson.M{
+	cur := db.RunCommand(common.GetContent(), bson.M{
 		"create": params.Collection,
 	})
 	res := bson.M{}

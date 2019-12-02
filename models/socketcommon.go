@@ -73,15 +73,24 @@ type ExportResponse struct {
 	Collection string `json:"collection"` //当前处理的数据集合
 }
 
+//导入数据结构
+type ImportCollection struct {
+	Collection    string   `json:"collection"`      //集合名称
+	Override      string   `json:"override"`        //复盖名称
+	Columns       []string `json:"columns"`         //复盖字段名,用于CSV
+	IsFirstColumn bool     `json:"is_first_column"` //是否行首为字段名, csv 导入使用
+}
+
 //导入数据参数
 type ImportParams struct {
 	*utils.JsonParse `json:"-"`
-	Server           ConnParams `json:"server"`          //数据源
-	Type             int        `json:"type"`            //导入数据类型 1 file, 2 folder
-	CollectionList   []string   `json:"collection_list"` //要导入的集合列表
-	Path             string     `json:"path"`            //文件或目录地址
-	Code             string     `json:"code"`            //事件
-	IsDrop           bool       `json:"is_drop"`         //是否删除原文档集合
+	Server           ConnParams          `json:"server"`          //数据源
+	Type             int                 `json:"type"`            //导入数据类型 1 file, 2 folder
+	CollectionList   []*ImportCollection `json:"collection_list"` //要导入的集合列表
+	Path             string              `json:"path"`            //文件或目录地址
+	Code             string              `json:"code"`            //事件
+	IsDrop           bool                `json:"is_drop"`         //是否删除原文档集合
+	ImportType       int                 `json:"import_type"`     //导入类型 , 1 bson,2 csv
 }
 
 func NewImportParams(data ...*ImportParams) *ImportParams {

@@ -3,13 +3,17 @@ package models
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/csv"
 	"fmt"
+	"github.com/clakeboy/golib/components"
 	"github.com/clakeboy/golib/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"io"
 	"moogo/common"
+	"moogo/components/mongo"
 	"moogo/socket"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -21,10 +25,13 @@ const (
 var CancelExport bool = false
 
 type Export struct {
-	Params  *ExportParams           //导出参数
-	Conn    *common.Conn            //导出的数据源连接
-	TempDir string                  //临时目录
-	so      *socket.WebSocketClient //socket 连接
+	Params        *ExportParams           //导出参数
+	Conn          *common.Conn            //导出的数据源连接
+	TempDir       string                  //临时目录
+	so            *socket.WebSocketClient //socket 连接
+	lock          *sync.Mutex
+	err           error //线程错误
+	processNumber int   //已经处理数
 }
 
 func NewExport(params *ExportParams, conn *common.Conn, so *socket.WebSocketClient) *Export {
@@ -32,6 +39,7 @@ func NewExport(params *ExportParams, conn *common.Conn, so *socket.WebSocketClie
 		Params: params,
 		Conn:   conn,
 		so:     so,
+		lock:   new(sync.Mutex),
 	}
 }
 
@@ -93,7 +101,7 @@ func (e *Export) start() {
 		//	e.emitError(err.Error())
 		//	return
 		//}
-
+		e.processNumber = 0
 		err = e.process(tarWriter, v)
 		if err != nil {
 			e.emitError(err.Error())
@@ -130,25 +138,46 @@ func (e *Export) process(tw *tar.Writer, collection string) error {
 	defer func() {
 		_ = tmpFile.Close()
 	}()
+	var poolData []interface{}
 	for i := 1; i <= pages; i++ {
-		if CancelExport {
-			return nil
-		}
-		list, err := coll.List(nil, int64(i), int64(ExportNumber), nil, nil)
-		if err != nil {
-			return err
-		}
-		_ = e.so.Emit(SocketEventBackup, NewSocketResult(ProcessCode, "processing", &ExportResponse{
-			Type:       2,
-			Collection: collection,
-			Current:    utils.YN(i == pages, int(dataCount), i*ExportNumber).(int),
-			Total:      int(dataCount),
-		}).ToJson(), nil)
-		err = e.convertBson(list, tmpFile)
-		if err != nil {
-			return err
-		}
+		poolData = append(poolData, i)
 	}
+	//for i := 1; i <= pages; i++ {
+	//	if CancelExport {
+	//		return nil
+	//	}
+	//	list, err := coll.List(nil, int64(i), int64(ExportNumber), nil, nil)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	_ = e.so.Emit(SocketEventBackup, NewSocketResult(ProcessCode, "processing", &ExportResponse{
+	//		Type:       2,
+	//		Collection: collection,
+	//		Current:    utils.YN(i == pages, int(dataCount), i*ExportNumber).(int),
+	//		Total:      int(dataCount),
+	//	}).ToJson(), nil)
+	//	err = e.convertBson(list, tmpFile)
+	//	if err != nil {
+	//		return err
+	//	}
+	//}
+	pool := components.NewPoll(4, func(obj ...interface{}) bool {
+		if CancelExport {
+			return false
+		}
+		err := e.multiProcess(obj[0].(int), coll, tmpFile, int(dataCount), obj[1].(int))
+		if err != nil {
+			e.err = err
+		}
+		return true
+	})
+	pool.AddTaskInterface(poolData)
+	pool.Start()
+
+	if CancelExport {
+		return nil
+	}
+
 	err = tmpFile.Sync()
 	if err != nil {
 		return err
@@ -181,8 +210,42 @@ func (e *Export) process(tw *tar.Writer, collection string) error {
 	return nil
 }
 
+func (e *Export) multiProcess(page int, coll *mongo.Collection, wf io.Writer, dataCount int, idx int) error {
+	if CancelExport {
+		return nil
+	}
+	list, err := coll.List(nil, int64(page), int64(ExportNumber), nil, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Println("th:", idx, "page:", page, "start")
+	switch e.Params.Type {
+	case ExportTypeBson:
+		err = e.convertBson(list, wf)
+	case ExportTypeCsv:
+		err = e.convertCsv(list, wf)
+	default:
+		err = e.convertBson(list, wf)
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println("th:", idx, "page:", page, "end")
+	_ = e.so.Emit(SocketEventBackup, NewSocketResult(ProcessCode, "processing", &ExportResponse{
+		Type:    2,
+		Current: e.processNumber,
+		Total:   dataCount,
+	}).ToJson(), nil)
+	return nil
+}
+
 func (e *Export) convertBson(dataList []interface{}, wf io.Writer) error {
+	e.lock.Lock()
+	defer e.lock.Unlock()
 	for _, v := range dataList {
+		if CancelExport {
+			return nil
+		}
 		out, err := bson.Marshal(v)
 		if err != nil {
 			return err
@@ -192,6 +255,31 @@ func (e *Export) convertBson(dataList []interface{}, wf io.Writer) error {
 			return err
 		}
 	}
+	e.processNumber += len(dataList)
+	return nil
+}
+
+func (e *Export) convertCsv(dataList []interface{}, wf io.Writer) error {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	csvw := csv.NewWriter(wf)
+	for _, row := range dataList {
+		if CancelExport {
+			return nil
+		}
+		var csvRow []string
+		val := row.(bson.M)
+		for _, vl := range val {
+			csvRow = append(csvRow, fmt.Sprintf("%s", vl))
+		}
+
+		err := csvw.Write(csvRow)
+		if err != nil {
+			return err
+		}
+	}
+	csvw.Flush()
+	e.processNumber += len(dataList)
 	return nil
 }
 
@@ -200,10 +288,11 @@ func (e *Export) emitError(msg string) {
 }
 
 func (e *Export) newExportName() string {
-	datetime := time.Now().Format("20060102150405")
-	return fmt.Sprintf("%s_%s.tgz",
+	datetime := time.Now().Format("20060102_150405")
+	return fmt.Sprintf("%s_%s_%s.tgz",
 		e.Params.Server.Database,
 		datetime,
+		e.getExportExt(),
 	)
 }
 

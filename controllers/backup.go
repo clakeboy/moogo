@@ -30,8 +30,9 @@ func NewBackupController(c *gin.Context) *BackupController {
 //读取导入文件列表
 func (b *BackupController) ActionRead(args []byte) ([]utils.M, error) {
 	var params struct {
-		ReadType   string `json:"read_type"`   //读取类型,1为压缩文件,2为目录
-		TargetPath string `json:"target_path"` //目标路径
+		ReadType   string   `json:"read_type"`   //读取类型,1为压缩文件,2为目录
+		TargetPath string   `json:"target_path"` //目标路径
+		FilterExt  []string `json:"filter_ext"`  //过滤文件后缀
 	}
 
 	err := json.Unmarshal(args, &params)
@@ -41,15 +42,15 @@ func (b *BackupController) ActionRead(args []byte) ([]utils.M, error) {
 
 	switch params.ReadType {
 	case ReadCompress:
-		return b.readCompressFile(params.TargetPath)
+		return b.readCompressFile(params.TargetPath, params.FilterExt)
 	case ReadFolder:
-		return b.readFolder(params.TargetPath)
+		return b.readFolder(params.TargetPath, params.FilterExt)
 	default:
 		return nil, errors.New("not support read type")
 	}
 }
 
-func (b *BackupController) readFolder(dirPath string) ([]utils.M, error) {
+func (b *BackupController) readFolder(dirPath string, fileExt []string) ([]utils.M, error) {
 	list, err := ioutil.ReadDir(dirPath)
 	if err != nil {
 		return nil, err
@@ -58,7 +59,8 @@ func (b *BackupController) readFolder(dirPath string) ([]utils.M, error) {
 	for _, info := range list {
 		if !info.IsDir() {
 			ext := filepath.Ext(info.Name())
-			if ext != ".bson" {
+			ok, _ := utils.Contains(ext, fileExt)
+			if !ok {
 				continue
 			}
 
@@ -71,7 +73,7 @@ func (b *BackupController) readFolder(dirPath string) ([]utils.M, error) {
 	return fileList, nil
 }
 
-func (b *BackupController) readCompressFile(filePath string) ([]utils.M, error) {
+func (b *BackupController) readCompressFile(filePath string, fileExt []string) ([]utils.M, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -93,7 +95,8 @@ func (b *BackupController) readCompressFile(filePath string) ([]utils.M, error) 
 			return nil, err
 		}
 		ext := filepath.Ext(header.Name)
-		if ext != ".bson" {
+		ok, _ := utils.Contains(ext, fileExt)
+		if !ok {
 			continue
 		}
 		fileList = append(fileList, utils.M{

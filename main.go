@@ -9,7 +9,6 @@ import (
 	"moogo/service"
 	"moogo/socket"
 	"os"
-	"path"
 )
 
 var out chan os.Signal
@@ -17,6 +16,7 @@ var server *service.HttpServer
 var socketServer *service.SocketServer
 
 func main() {
+	common.InitAppConfig()
 	go utils.ExitApp(out, func(s os.Signal) {
 		_ = os.Remove(command.CmdPidName)
 	})
@@ -29,10 +29,7 @@ func init() {
 
 	common.Conf = common.NewYamlConfig(command.CmdConfFile)
 
-	if !utils.PathExists(path.Dir(common.Conf.BDB.Path)) {
-		_ = os.MkdirAll(path.Dir(common.Conf.BDB.Path), 0775)
-	}
-	common.BDB, err = storm.Open(common.Conf.BDB.Path)
+	common.BDB, err = storm.Open(common.GetAppDataDir() + "/moogo.s")
 
 	if err != nil {
 		fmt.Println("open database error:", err)

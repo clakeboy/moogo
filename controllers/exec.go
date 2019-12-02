@@ -1,8 +1,8 @@
 package controllers
 
 import (
-	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/clakeboy/golib/utils"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -68,15 +68,13 @@ func (e *ExecController) ActionQuery(args []byte) (utils.M, error) {
 		return nil, err
 	}
 
-	ctx := context.TODO()
-
 	coll := conn.Db.Database(params.Database).Collection(params.Collection)
 
 	var dataCount int64
 	if len(filter) > 0 {
-		dataCount, err = coll.CountDocuments(ctx, filter)
+		dataCount, err = coll.CountDocuments(common.GetContent(), filter)
 	} else {
-		dataCount, err = coll.EstimatedDocumentCount(ctx)
+		dataCount, err = coll.EstimatedDocumentCount(common.GetContent())
 	}
 	if err != nil {
 		return nil, err
@@ -86,7 +84,8 @@ func (e *ExecController) ActionQuery(args []byte) (utils.M, error) {
 	findOpt.SetLimit(params.Number)
 	findOpt.SetSkip((params.Page - 1) * params.Number)
 	findOpt.SetSort(mSort)
-	cur, err := coll.Find(ctx,
+	//findOpt.SetProjection()
+	cur, err := coll.Find(common.GetContent(),
 		filter,
 		findOpt,
 	)
@@ -95,12 +94,12 @@ func (e *ExecController) ActionQuery(args []byte) (utils.M, error) {
 		return nil, err
 	}
 
-	defer cur.Close(ctx)
+	defer cur.Close(common.GetContent())
 
 	var list []interface{}
 	keysM := utils.M{}
 	var keys ColumnList
-	for cur.Next(ctx) {
+	for cur.Next(common.GetContent()) {
 		//data := bson.M{}
 		val := bson.M{}
 		data := bson.Raw{}
@@ -138,26 +137,31 @@ func (e *ExecController) ActionFind(args []byte) (string, error) {
 		Database   string `json:"database"`
 		Collection string `json:"collection"`
 		Id         string `json:"id"`
+		IdType     int    `json:"id_type"`
 	}
 
 	err := json.Unmarshal(args, &params)
 	if err != nil {
 		return "", err
 	}
-
-	id, err := primitive.ObjectIDFromHex(params.Id)
-	if err != nil {
-		return "", err
+	var id interface{}
+	if params.IdType == 7 {
+		id, err = primitive.ObjectIDFromHex(params.Id)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		id = params.Id
 	}
 
 	conn, err := common.Conns.Get(params.ServerId)
 	if err != nil {
 		return "", err
 	}
-	ctx := context.TODO()
+
 	coll := conn.Db.Database(params.Database).Collection(params.Collection)
 
-	res := coll.FindOne(ctx, bson.M{"_id": id})
+	res := coll.FindOne(common.GetContent(), bson.M{"_id": id})
 	if res.Err() != nil {
 		return "", res.Err()
 	}
@@ -202,7 +206,7 @@ func (e *ExecController) ActionInsert(args []byte) error {
 		return err
 	}
 
-	_, err = conn.Db.Database(params.Database).Collection(params.Collection).InsertOne(nil, data)
+	_, err = conn.Db.Database(params.Database).Collection(params.Collection).InsertOne(common.GetContent(), data)
 
 	return err
 }
@@ -232,9 +236,45 @@ func (e *ExecController) ActionDelete(args []byte) error {
 	}
 
 	coll := conn.Db.Database(params.Database).Collection(params.Collection)
-	_, err = coll.DeleteOne(nil, bson.M{"_id": id})
+	_, err = coll.DeleteOne(common.GetContent(), bson.M{"_id": id})
 
 	return err
+}
+
+//删除多项
+func (e *ExecController) ActionDeleteMulti(args []byte) (int, error) {
+	var params struct {
+		ServerId   int      `json:"server_id"`
+		Database   string   `json:"database"`
+		Collection string   `json:"collection"`
+		IdList     []string `json:"id_list"`
+	}
+
+	err := json.Unmarshal(args, &params)
+	if err != nil {
+		return 0, err
+	}
+
+	var ids []interface{}
+	for _, v := range params.IdList {
+		id, err := primitive.ObjectIDFromHex(v)
+		if err != nil {
+			return 0, fmt.Errorf("%s,err:%s", id, err.Error())
+		}
+		ids = append(ids, id)
+	}
+
+	conn, err := common.Conns.Get(params.ServerId)
+	if err != nil {
+		return 0, err
+	}
+
+	coll := conn.Db.Database(params.Database).Collection(params.Collection)
+	res, err := coll.DeleteMany(common.GetContent(), bson.M{"_id": bson.M{"$in": ids}})
+	if err != nil {
+		return 0, err
+	}
+	return int(res.DeletedCount), err
 }
 
 //修改
@@ -268,6 +308,6 @@ func (e *ExecController) ActionUpdate(args []byte) error {
 	}
 
 	coll := conn.Db.Database(params.Database).Collection(params.Collection)
-	_, err = coll.ReplaceOne(nil, bson.M{"_id": id}, data)
+	_, err = coll.ReplaceOne(common.GetContent(), bson.M{"_id": id}, data)
 	return err
 }

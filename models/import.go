@@ -3,6 +3,7 @@ package models
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/csv"
 	"fmt"
 	"github.com/clakeboy/golib/utils"
 	"go.mongodb.org/mongo-driver/bson"
@@ -17,6 +18,11 @@ import (
 const (
 	ImportFile = iota + 1
 	ImportFolder
+)
+
+const (
+	ImportBson = iota + 1
+	ImportCsv
 )
 
 var CancelImport = false
@@ -85,12 +91,20 @@ func (i *Import) processFile() {
 			i.emitError(err.Error())
 			return
 		}
-		isFind, _ := utils.Contains(header.Name, i.Params.CollectionList)
+		isFind := false
+		var currentCollection *ImportCollection
+		for _, v := range i.Params.CollectionList {
+			if v.Collection == header.Name {
+				isFind = true
+				currentCollection = v
+				break
+			}
+		}
+		//isFind, _ := utils.Contains(header.Name, i.Params.CollectionList)
 		if !isFind {
 			continue
 		}
-		ext := filepath.Ext(header.Name)
-		collection := strings.Replace(filepath.Base(header.Name), ext, "", -1)
+		collection := strings.Replace(filepath.Base(header.Name), filepath.Ext(header.Name), "", -1)
 		//发送开始信息
 		_ = i.so.Emit(SocketEventImport, NewSocketResult(ProcessCode, "processing", &ExportResponse{
 			Type:       1,
@@ -98,7 +112,15 @@ func (i *Import) processFile() {
 			Current:    index,
 			Total:      len(i.Params.CollectionList),
 		}).ToJson(), nil)
-		err = i.process(tr, collection)
+		switch i.Params.ImportType {
+		case ImportBson:
+			err = i.processBson(tr, collection)
+		case ImportCsv:
+			err = i.processCsv(tr, currentCollection)
+		default:
+			err = i.processBson(tr, collection)
+		}
+		//err = i.processBson(tr, collection)
 		if err != nil {
 			i.emitError(err.Error())
 			return
@@ -113,10 +135,46 @@ func (i *Import) processFile() {
 }
 
 func (i *Import) processFolder() {
+	for idx, v := range i.Params.CollectionList {
+		f, err := os.Open(fmt.Sprintf("%s/%s", i.Params.Path, v.Collection))
+		if err != nil {
+			i.emitError(err.Error())
+			return
+		}
+		if v.Override != "" {
+			v.Collection = v.Override
+		} else {
+			v.Collection = strings.Replace(v.Collection, filepath.Ext(v.Collection), "", -1)
+		}
 
+		_ = i.so.Emit(SocketEventImport, NewSocketResult(ProcessCode, "processing", &ExportResponse{
+			Type:       1,
+			Collection: v.Collection,
+			Current:    idx + 1,
+			Total:      len(i.Params.CollectionList),
+		}).ToJson(), nil)
+		switch i.Params.ImportType {
+		case ImportBson:
+			err = i.processBson(f, v.Collection)
+		case ImportCsv:
+			err = i.processCsv(f, v)
+		default:
+			err = i.processBson(f, v.Collection)
+		}
+		//err = i.processBson(f, collection)
+		if err != nil {
+			i.emitError(err.Error())
+			return
+		}
+		f.Close()
+	}
+	_ = i.so.Emit(SocketEventImport, NewSocketResult(CompleteCode, "import database complete", &ExportResponse{
+		Current: len(i.Params.CollectionList),
+		Total:   len(i.Params.CollectionList),
+	}).ToJson(), nil)
 }
 
-func (i *Import) process(rd io.Reader, collection string) error {
+func (i *Import) processBson(rd io.Reader, collection string) error {
 	if i.Params.IsDrop {
 		err := i.Conn.Db.Database(i.Params.Server.Database).Collection(collection).Drop(nil)
 		return err
@@ -177,7 +235,7 @@ func (i *Import) process(rd io.Reader, collection string) error {
 			Type:       2,
 			Collection: collection,
 			Current:    dataCount,
-			Total:      dataCount,
+			Total:      readCount,
 		}).ToJson(), nil)
 	}
 	return nil
@@ -207,4 +265,66 @@ func (i *Import) convertBsonLength(header []byte) int {
 
 func (i *Import) emitError(msg string) {
 	_ = i.so.Emit(SocketEventImport, NewSocketResult(ErrorCode, msg, nil).ToJson(), nil)
+}
+
+func (i *Import) processCsv(rd io.Reader, collection *ImportCollection) error {
+	if i.Params.IsDrop {
+		err := i.Conn.Db.Database(i.Params.Server.Database).Collection(collection.Collection).Drop(nil)
+		return err
+	}
+	coll := i.Conn.Db.Collection(collection.Collection, i.Params.Server.Database)
+	var cacheList []interface{}
+	dataCount := 0
+	readCount := 0
+	csvRd := csv.NewReader(rd)
+	var header []string
+	var err error
+	if collection.IsFirstColumn {
+		header, err = csvRd.Read()
+		if err != nil {
+			return err
+		}
+	}
+	for {
+		row, err := csvRd.Read()
+		if err != nil {
+			if err != io.EOF {
+				return err
+			}
+			break
+		}
+		data := bson.D{}
+		for i, v := range header {
+			data = append(data, bson.E{Key: v, Value: row[i]})
+		}
+		cacheList = append(cacheList, data)
+		if len(cacheList) >= i.ImportLengthCache {
+			err = coll.Insert(cacheList...)
+			if err != nil {
+				return err
+			}
+			dataCount += len(cacheList)
+			_ = i.so.Emit(SocketEventImport, NewSocketResult(ProcessCode, "processing", &ExportResponse{
+				Type:       2,
+				Collection: collection.Collection,
+				Current:    dataCount,
+				Total:      readCount,
+			}).ToJson(), nil)
+			cacheList = nil
+		}
+	}
+	if len(cacheList) > 0 {
+		err := coll.Insert(cacheList...)
+		if err != nil {
+			return err
+		}
+		dataCount += len(cacheList)
+		_ = i.so.Emit(SocketEventImport, NewSocketResult(ProcessCode, "processing", &ExportResponse{
+			Type:       2,
+			Collection: collection.Collection,
+			Current:    dataCount,
+			Total:      readCount,
+		}).ToJson(), nil)
+	}
+	return nil
 }

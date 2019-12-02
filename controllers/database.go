@@ -1,11 +1,9 @@
 package controllers
 
 import (
-	"context"
 	"encoding/json"
 	"github.com/clakeboy/golib/utils"
 	"github.com/gin-gonic/gin"
-	"gopkg.in/mgo.v2/bson"
 	"moogo/common"
 )
 
@@ -62,17 +60,17 @@ func (d *DatabaseController) ActionAdd(args []byte) (string, error) {
 		return "", err
 	}
 
-	conn, err := common.Conns.Get(params.ServerId)
-	if err != nil {
-		return "", err
-	}
-
-	coll := conn.Db.Database(params.Database).Collection("tmp")
-	_, err = coll.InsertOne(nil, bson.M{"name": params.Database})
-	if err != nil {
-		return "", nil
-	}
-	_ = coll.Drop(nil)
+	//conn, err := common.Conns.Get(params.ServerId)
+	//if err != nil {
+	//	return "", err
+	//}
+	//
+	//coll := conn.Db.Database(params.Database).Collection("tmp")
+	//_, err = coll.InsertOne(common.GetContent(), bson.M{"name": params.Database})
+	//if err != nil {
+	//	return "", nil
+	//}
+	//_ = coll.Drop(nil)
 	return params.Database, nil
 }
 
@@ -93,7 +91,7 @@ func (d *DatabaseController) ActionDrop(args []byte) error {
 		return err
 	}
 
-	err = conn.Db.Database(params.Database).Drop(context.TODO())
+	err = conn.Db.Database(params.Database).Drop(common.GetContent())
 
 	return err
 }

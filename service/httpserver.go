@@ -1,12 +1,7 @@
 package service
 
 import (
-	"fmt"
-	"runtime"
-
 	"github.com/clakeboy/golib/components"
-	"github.com/clakeboy/golib/utils"
-
 	"github.com/gin-gonic/gin"
 	"moogo/common"
 	"moogo/middles"
@@ -37,9 +32,6 @@ func (h *HttpServer) Start() {
 			wait <- true
 		}
 	}()
-	if !h.isDebug && (runtime.GOOS == "darwin" || runtime.GOOS == "windows") {
-		utils.OpenBrowse(fmt.Sprintf("http://localhost:%s/app", common.Conf.System.Port))
-	}
 	<-wait
 }
 

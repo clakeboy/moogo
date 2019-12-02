@@ -16,6 +16,11 @@ const (
 	AckMessage    = 0x0f
 )
 
+const (
+	SocketStatusOpen = iota + 1
+	SocketStatusClose
+)
+
 //接收事件模型
 type EventMessage struct {
 	IsAck bool   `json:"is_ack"`
@@ -42,6 +47,7 @@ type WebSocketClient struct {
 	acks   map[string]*caller
 	rooms  map[string]bool
 	rmlk   sync.RWMutex
+	status int //连接状态
 }
 
 //创建一个新的连接类
@@ -62,6 +68,7 @@ func NewWebsocket(conn *websocket.Conn, ena *Engine) *WebSocketClient {
 func (w *WebSocketClient) Start() {
 	go w.Read()
 	go w.Write()
+	w.status = SocketStatusOpen
 }
 
 //得到连接session ID
@@ -179,6 +186,9 @@ func (w *WebSocketClient) Emit(evtName string, data []byte, ack func()) error {
 	//		args = args[:l-1]
 	//	}
 	//}
+	if w.status == SocketStatusClose {
+		return nil
+	}
 	if ack != nil {
 		c, err := newCaller(ack)
 		if err != nil {
@@ -192,6 +202,9 @@ func (w *WebSocketClient) Emit(evtName string, data []byte, ack func()) error {
 
 //下发ACK消息
 func (w *WebSocketClient) EmitAck(evtName string, data []byte) {
+	if w.status == SocketStatusClose {
+		return
+	}
 	w.send <- w.enProtocol(AckMessage, evtName, data)
 }
 
@@ -283,6 +296,7 @@ func (w *WebSocketClient) BroadcastTo(roomId string, evtName string, data []byte
 //关闭socket 连接
 func (w *WebSocketClient) Close() {
 	_ = w.conn.Close()
+	w.status = SocketStatusClose
 	w.LeaveAll()
 	w.ena.CloseConnect(w.id)
 }

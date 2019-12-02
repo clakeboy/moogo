@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -30,8 +32,8 @@ type SSHSession struct {
 }
 
 const (
-	SSH_OPEN = iota + 1
-	SSH_CLOSED
+	SSHOpen = iota + 1
+	SSHClosed
 )
 
 func NewSession(listen, remote string, client *ssh.Client) *SSHSession {
@@ -63,7 +65,6 @@ func (s *SSHSession) handleConn(conn net.Conn) {
 		wait.Done()
 	}()
 	wait.Wait()
-	s.status = SSH_CLOSED
 	log.Printf("%s -> %s closed", conn.RemoteAddr(), s.remoteAddr)
 }
 
@@ -72,7 +73,8 @@ func (s *SSHSession) Run() error {
 	if err != nil {
 		return err
 	}
-	s.status = SSH_OPEN
+	fmt.Println("listen local ssh host:", s.listenAddr)
+	s.status = SSHOpen
 	for !s.close {
 		conn, err := l.Accept()
 		if err != nil {
@@ -80,7 +82,8 @@ func (s *SSHSession) Run() error {
 		}
 		go s.handleConn(conn)
 	}
-	l.Close()
+	s.status = SSHClosed
+	_ = l.Close()
 	return nil
 }
 
@@ -91,7 +94,12 @@ func (s *SSHSession) Close() {
 	s.close = true
 }
 
-func (s *SSHSession) CheckPort(port int) string {
+func (s *SSHSession) CheckPort() (string, error) {
+	addrs := strings.Split(s.listenAddr, ":")
+	port, err := strconv.Atoi(addrs[1])
+	if err != nil {
+		return "", err
+	}
 	check := true
 	for check {
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -99,10 +107,11 @@ func (s *SSHSession) CheckPort(port int) string {
 			port++
 			continue
 		}
-		ln.Close()
+		_ = ln.Close()
 		check = false
 	}
-	return fmt.Sprintf(":%d", port)
+	s.listenAddr = fmt.Sprintf("%s:%d", addrs[0], port)
+	return s.listenAddr, nil
 }
 
 func LoginSSH(cfg *SSHServer) (*ssh.Client, error) {

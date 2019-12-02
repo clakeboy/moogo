@@ -32,6 +32,8 @@ func NewDatabase(conf *Config) (*Database, error) {
 	opts.SetHosts([]string{fmt.Sprintf("%s:%s", conf.Host, conf.Port)})
 	opts.SetMaxPoolSize(uint64(conf.PoolSize))
 	opts.SetConnectTimeout(20 * time.Second)
+	opts.SetCompressors([]string{"snappy", "zlib"})
+	opts.SetZlibLevel(7)
 	if conf.Auth != "" {
 		opts.SetAuth(options.Credential{
 			AuthMechanism: "SCRAM-SHA-1",
@@ -66,7 +68,8 @@ func (d *Database) Open() error {
 
 //disconnect mongodb
 func (d *Database) Close() error {
-	return d.client.Disconnect(context.Background())
+	ctx, _ := context.WithTimeout(context.Background(), time.Second*5)
+	return d.client.Disconnect(ctx)
 }
 
 //select database

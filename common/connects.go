@@ -27,6 +27,10 @@ func (c *Connects) Add(conn *Conn) {
 
 func (c *Connects) Get(serverId int) (*Conn, error) {
 	if conn, ok := c.list[serverId]; ok {
+		err := conn.Db.Ping()
+		if err != nil {
+			return nil, err
+		}
 		return conn, nil
 	}
 	return nil, errors.New("the connection is disconnect")
@@ -37,6 +41,7 @@ func (c *Connects) Remove(serverId int) {
 	if !ok {
 		return
 	}
+	_ = conn.Db.Close()
 	if conn.SSH != nil {
 		conn.SSH.Close()
 	}

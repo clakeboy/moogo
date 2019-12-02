@@ -1,10 +1,15 @@
 NAME = moogo
 ARCH = amd64
-OS = linux
+OS = darwin
 #linux darwin windows
+ifeq ($(OS),windows)
+	OUTNAME = $(NAME).exe
+else
+	OUTNAME = $(NAME)_$(OS)
+endif
 all:
-	CGO_ENABLED=0 GOARCH=$(ARCH) GOOS=$(OS) go build -x -v -ldflags "-w" -o $(NAME) main.go
-	upx -9 $(name)
+	CGO_ENABLED=0 GOARCH=$(ARCH) GOOS=$(OS) go build -x -v -ldflags "-w" -o ./build/$(OUTNAME) main.go
+	upx -9 ./build/$(OUTNAME)
 .PHONY : clean
 clean:
-	rm -f $(name)
+	rm -rf ./build/*

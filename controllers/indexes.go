@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/clakeboy/golib/ckdb"
@@ -63,15 +62,15 @@ func (i *IndexesController) ActionFind(args []byte) (*IndexData, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx := context.TODO()
+
 	idxView := conn.Db.Database(params.Database).Collection(params.Collection).Indexes()
-	cur, err := idxView.List(ctx)
+	cur, err := idxView.List(common.GetContent())
 	if err != nil {
 		return nil, err
 	}
 
-	defer cur.Close(ctx)
-	for cur.Next(ctx) {
+	defer cur.Close(common.GetContent())
+	for cur.Next(common.GetContent()) {
 		var data IndexData
 		err := cur.Decode(&data)
 		if err != nil {
@@ -116,15 +115,14 @@ func (i *IndexesController) ActionAdd(args []byte) error {
 	idxOpts.SetExpireAfterSeconds(params.Opts.ExpireAfterSeconds)
 	idxOpts.SetUnique(params.Opts.Unique)
 
-	ctx := context.TODO()
 	dbIdx := conn.Db.Database(params.Database).Collection(params.Collection).Indexes()
 
-	_, err = dbIdx.DropOne(ctx, params.Opts.Name)
-	if err != nil {
-		return err
-	}
+	//_, err = dbIdx.DropOne(ctx, params.Opts.Name)
+	//if err != nil {
+	//	return err
+	//}
 
-	res, err := dbIdx.CreateOne(ctx, mongo.IndexModel{
+	res, err := dbIdx.CreateOne(common.GetContent(), mongo.IndexModel{
 		Keys:    params.Keys,
 		Options: idxOpts,
 	})
@@ -151,9 +149,8 @@ func (i *IndexesController) ActionDelete(args []byte) error {
 		return err
 	}
 
-	ctx := context.TODO()
 	dbIdx := conn.Db.Database(params.Database).Collection(params.Collection).Indexes()
-	_, err = dbIdx.DropOne(ctx, params.Name)
+	_, err = dbIdx.DropOne(common.GetContent(), params.Name)
 	if err != nil {
 		return err
 	}
