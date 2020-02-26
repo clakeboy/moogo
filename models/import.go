@@ -193,23 +193,24 @@ func (i *Import) processBson(rd io.Reader, collection string) error {
 		}
 
 		dataLen := i.convertBsonLength(header)
-
+		fmt.Println(header, dataLen)
 		dataByte, err := i.reRead(rd, dataLen-4)
 		if err != nil {
 			if err != io.EOF {
 				return err
 			}
-			break
+			//break
 		}
 		readCount += dataLen
-
+		fmt.Println(header, dataLen)
 		data := bson.D{}
 		err = bson.Unmarshal(append(header, dataByte...), &data)
 		if err != nil {
-			i.emitError(err.Error())
-			break
+			//i.emitError(err.Error())
+			return err
 		}
 		cacheList = append(cacheList, data)
+
 		if len(cacheList) >= i.ImportLengthCache {
 			err = coll.Insert(cacheList...)
 			if err != nil {
@@ -245,7 +246,7 @@ func (i *Import) reRead(rd io.Reader, readCount int) ([]byte, error) {
 	cache := make([]byte, readCount)
 	rn, err := rd.Read(cache)
 	if err != nil {
-		return nil, err
+		return cache, err
 	}
 	if rn != readCount {
 		tmp, err := i.reRead(rd, readCount-rn)
