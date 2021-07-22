@@ -6,10 +6,10 @@ require (
 	github.com/clakeboy/golib v1.1.2
 	github.com/gin-gonic/gin v1.3.0
 	github.com/gorilla/websocket v1.4.0
-	go.mongodb.org/mongo-driver v1.1.1
-	golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9
+	go.mongodb.org/mongo-driver v1.5.1
+	golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073
 	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce
-	gopkg.in/yaml.v2 v2.2.2
+	gopkg.in/yaml.v2 v2.2.8
 )
 
 go 1.13
