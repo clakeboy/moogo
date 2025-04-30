@@ -9,7 +9,9 @@ else
 endif
 all:
 	CGO_ENABLED=0 GOARCH=$(ARCH) GOOS=$(OS) go build -x -v -ldflags "-w" -o ./build/$(OUTNAME) main.go
-	upx -9 ./build/$(OUTNAME)
+	if [ "$(OS)" != "darwin" ]; then \
+	    upx -9 ./build/$(OUTNAME); \
+	fi
 .PHONY : clean
 clean:
 	rm -rf ./build/*

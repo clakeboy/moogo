@@ -11,7 +11,7 @@ func Session() gin.HandlerFunc {
 		if !ok {
 			cookie = httputils.NewHttpCookie(c.Request, c.Writer, nil)
 		}
-		session := httputils.NewHttpSession(cookie.(*httputils.HttpCookie), nil)
+		session := httputils.NewHttpSession(cookie.(*httputils.HttpCookie))
 		session.Start()
 		c.Set("session", session)
 		c.Next()
